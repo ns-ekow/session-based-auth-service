@@ -1,0 +1,394 @@
+openapi: 3.0.3
+info:
+  title: Babel- Global Stories User Service API
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+tags:
+  - name: Auth
+    description: Session-based authentication endpoints
+  - name: Users
+    description: User profile endpoints
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      # Use your actual cookie name from .env (SESSION_NAME). Example:
+      name: ekxekxekx
+    csrfHeader:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+
+  schemas:
+    User:
+      type: object
+      properties:
+        _id:
+          type: string
+          description: MongoDB document ID
+          example: "66c5e5f1e2b2a27fd5f4e6c1"
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        username:
+          type: string
+          example: ekx
+        fullName:
+          type: string
+          example: Ekow Sackey
+        role:
+          type: string
+          enum: [client, admin]
+          example: client
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+          example: https://example.com/avatar.png
+        countryOfResidence:
+          type: string
+          nullable: true
+          example: ghana
+        countryOfOrigin:
+          type: string
+          nullable: true
+          example: ghana
+        dateOfBirth:
+          type: string
+          format: date
+          nullable: true
+          example: "1990-05-01"
+        personas:
+          type: array
+          items:
+            type: string
+          description: Persona IDs (if present)
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-08-21T12:34:56.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2025-08-21T12:34:56.000Z"
+
+    # Some endpoints return errors as { error: { code, message } }
+    ErrorEnvelope:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: invalid_csrf_token
+            message:
+              type: string
+              example: Invalid or missing CSRF token
+
+    # Others return flat errors as { code, message }
+    FlatError:
+      type: object
+      properties:
+        code:
+          type: string
+          example: invalid_credentials
+        message:
+          type: string
+          example: Email or password incorrect
+
+    # Allow either shape for flexibility with current handlers
+    Error:
+      oneOf:
+        - $ref: "#/components/schemas/ErrorEnvelope"
+        - $ref: "#/components/schemas/FlatError"
+
+    ValidationErrors:
+      type: object
+      properties:
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                example: email
+              message:
+                type: string
+                example: Invalid email
+              code:
+                type: string
+                example: validation_error
+
+  responses:
+    Unauthorized:
+      description: Unauthenticated
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ForbiddenCsrf:
+      description: CSRF token invalid or missing
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationErrors"
+    Conflict:
+      description: Resource conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+paths:
+  /api/auth/csrf-token:
+    get:
+      tags: [Auth]
+      summary: Get CSRF token (sets CSRF secret cookie)
+      responses:
+        200:
+          description: Token issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  csrfToken:
+                    type: string
+                    example: "qX3L...mP"
+
+  /api/auth/signup:
+    post:
+      tags: [Auth]
+      summary: Register a new user and start a session
+      description: Requires CSRF header; does not require an existing session.
+      security:
+        - csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, username, fullName, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 20
+                fullName:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                password:
+                  type: string
+                  minLength: 8
+            examples:
+              signup:
+                value:
+                  email: user@example.com
+                  username: ekx
+                  fullName: Ekow Sackey
+                  password: StrongP@ssw0rd
+      responses:
+        201:
+          description: Registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+        400:
+          $ref: "#/components/responses/ValidationError"
+        409:
+          $ref: "#/components/responses/Conflict"
+        500:
+          $ref: "#/components/responses/InternalError"
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and start a session
+      description: Requires CSRF header; does not require an existing session.
+      security:
+        - csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+            examples:
+              login:
+                value:
+                  email: user@example.com
+                  password: StrongP@ssw0rd
+      responses:
+        200:
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+        400:
+          $ref: "#/components/responses/ValidationError"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/InternalError"
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current session user
+      security:
+        - cookieAuth: []
+      responses:
+        200:
+          description: Current user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout and destroy session
+      security:
+        - cookieAuth: []
+        - csrfHeader: []
+      responses:
+        200:
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Logged out successfully. BYE!
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/ForbiddenCsrf"
+
+  /api/user/me:
+    get:
+      tags: [Users]
+      summary: Get my profile
+      security:
+        - cookieAuth: []
+      responses:
+        200:
+          description: My profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+    put:
+      tags: [Users]
+      summary: Update my profile (allowlisted fields only)
+      description: |
+        Allowed fields: fullName, avatarUrl, countryOfResidence, countryOfOrigin, dateOfBirth.
+        Requires CSRF header and an authenticated session.
+      security:
+        - cookieAuth: []
+        - csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fullName:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                avatarUrl:
+                  type: string
+                  format: uri
+                countryOfResidence:
+                  type: string
+                  minLength: 3
+                  maxLength: 30
+                countryOfOrigin:
+                  type: string
+                  minLength: 3
+                  maxLength: 30
+                dateOfBirth:
+                  type: string
+                  format: date
+            examples:
+              updateProfile:
+                value:
+                  fullName: Ekow S. Updated
+                  avatarUrl: https://example.com/me.png
+                  countryOfResidence: ghana
+                  countryOfOrigin: ghana
+                  dateOfBirth: "1991-06-02"
+      responses:
+        200:
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+        400:
+          $ref: "#/components/responses/ValidationError"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/ForbiddenCsrf"
+        409:
+          $ref: "#/components/responses/Conflict"
+        500:
+          $ref: "#/components/responses/InternalError"
